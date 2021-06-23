@@ -9,10 +9,10 @@
 \TLV
 
    // /====================\
-   // | Sum 1 to 9 Program |
+   // | SAXPY |
    // \====================/
    //
-   // Program for MYTH Workshop to test RV32I
+   // Program to compute  stripmined SAXPY loop using a FMA instruction & normal flow
    // Add 1,2,3,...,9 (in that order).
    //
    // Regs:
@@ -59,7 +59,7 @@
       //PC logic
                   
          $imem_rd_en = $reset ? 0 : 1;
-         //$imem_rd_addr[M4_IMEM_INDEX_CNT-1:0] = $pc[M4_IMEM_INDEX_CNT+1:2]; 
+         $imem_rd_addr[M4_IMEM_INDEX_CNT-1:0] = $pc[M4_IMEM_INDEX_CNT+1:2]; 
         
       @1
          $instr[31:0] = $imem_rd_en ? $imem_rd_data[31:0] : 0;
@@ -67,9 +67,9 @@
          //Decode Logic
          //A. Instruction type
          $is_vld_instr  = $instr[6:0] ==? 7'b0000111;
-         $is_vstr_instr = $instr[6:2] ==? 7'b0100111;
-         $is_vamo_instr = $instr[6:2] ==? 7'b0101111;
-         $is_var_instr  = $instr[6:2] ==? 7'b1010111 && $instr[14:12] != 3'b111;
+         $is_vstr_instr = $instr[6:0] ==? 7'b0100111;
+         $is_vamo_instr = $instr[6:0] ==? 7'b0101111;
+         $is_var_instr  = $instr[6:0] ==? 7'b1010111 && $instr[14:12] != 3'b111;
          $is_vcfg_instr = $instr[6:0] ==? 7'b1010111 && $instr[14:12] = 3'b111;
          
          //B.Flavours of above types
@@ -95,7 +95,7 @@
          
          //Config instructions - using 2 out of 3 defined
          $is_vsetvl = $is_vcfg_instr && $instr[31] == 1'b1;
-         $is_vsetvl = $is_vcfg_instr && $instr[31] == 1'b0;
+         $is_vsetvli = $is_vcfg_instr && $instr[31] == 1'b0;
          
          //C. Immediate decode
          // VAR type doesn't have an immediate field - check
@@ -113,11 +113,11 @@
          $vd_valid = !$is_vcfg_instr && !is_vstr_instr;
          $rd_valid = $is_vcfg_instr || $is_fv_instr || $is_mvv_instr || $is_mvx_instr;
          
-         $vs1_valid == $is_ivv_instr || $is_fvv_instr || $is_mvv_instr;
-         $rs1_valid == $is_ivx_instr || $is_fvf_instr || $is_mvx_instr || $is_vamo_instr || $is_vld_instr || $is_vstr_instr || $is_vcfg_instr; //vestvli not supported here; 
+         $vs1_valid = $is_ivv_instr || $is_fvv_instr || $is_mvv_instr;
+         $rs1_valid = $is_ivx_instr || $is_fvf_instr || $is_mvx_instr || $is_vamo_instr || $is_vld_instr || $is_vstr_instr || $is_vcfg_instr; //vestvli not supported here; 
                                                                                                                                               //that has different encoding for rs1
-         $vs2_valid == $is_var_instr || $is_vamo_instr || $is_vlx_instr || $is_vsx_instr;
-         $rs2_valid == $is_vls_instr || $is_vss_instr || $is_vsetvl; // potential error; vsetvl not defined yet
+         $vs2_valid = $is_var_instr || $is_vamo_instr || $is_vlx_instr || $is_vsx_instr;
+         $rs2_valid = $is_vls_instr || $is_vss_instr || $is_vsetvl; // potential error; vsetvl not defined yet
          
          $funct3_valid = $is_var_instr || $is_vcfg_instr; //check
          $funct6_valid = $is_var_instr;
