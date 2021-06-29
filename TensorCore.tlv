@@ -5,6 +5,48 @@
    m4_include_lib(['https://raw.githubusercontent.com/stevehoover/RISC-V_MYTH_Workshop/c1719d5b338896577b79ee76c2f443ca2a76e14f/tlv_lib/risc-v_shell_lib.tlv'])
 
 \SV
+     // URL include paths:
+   //m4_define(['m4_TC_repo'], ['['https://raw.githubusercontent.com/olofk/serv/master/']']) 
+   m4_define(['m4_TC_repo'], ['['https://github.com/nitinm694/Tensor_Core_RISCV_VP/']'])
+   m4_define(['m4_TC_rtl'], ['m4_TC_repo['SV_Modules/']'])
+   //m4_define(['m4_servant_rtl'], ['m4_serv_repo['servant/']'])
+   //m4_define(['m4_serv_bench'], ['m4_serv_repo['bench/']'])
+   //m4_define(['m4_serv_hex'], ['m4_serv_repo['sw/']'])
+
+   //Bench RTL
+   //m4_sv_get_url(m4_swerv_config_src['pic_map_auto.h'])
+   //m4_sv_get_url(m4_serv_bench['servant_tb.v']) // CAN DEFINE THE TB
+   //m4_sv_include_url(m4_serv_bench['uart_decoder.v'])
+
+   
+   // Modules:
+   // Core RTL
+   m4_sv_get_url(m4_TC_rtl['VRF.sv'])
+                              
+   /*
+   // Hex files:
+   m4_sv_get_url(m4_serv_hex['blinky.hex'])
+   
+   module servant_sim
+   	(input wire  wb_clk,
+   	input wire  wb_rst,
+   	output wire q);
+   	parameter memfile = "";
+   	parameter memsize = 8192;
+   	parameter with_csr = 1;
+   	reg [1023:0] firmware_file;
+   initial
+   	begin
+   	$display("Loading RAM from %0s", "./sv_url_inc/blinky.hex");
+   	$readmemh("./sv_url_inc/blinky.hex", dut.ram.mem);
+   	end
+   servant #(.memfile  (memfile),
+   	.memsize  (memsize),
+   	.sim      (1),
+   	.with_csr (with_csr))
+   	dut(wb_clk, wb_rst, q);
+   endmodule
+   */
    m4_makerchip_module   // (Expanded in Nav-TLV pane.)
 \TLV
 
@@ -70,18 +112,18 @@
          $is_vstr_instr = $instr[6:0] ==? 7'b0100111;
          $is_vamo_instr = $instr[6:0] ==? 7'b0101111;
          $is_var_instr  = $instr[6:0] ==? 7'b1010111 && $instr[14:12] != 3'b111;
-         $is_vcfg_instr = $instr[6:0] ==? 7'b1010111 && $instr[14:12] = 3'b111;
+         $is_vcfg_instr = $instr[6:0] ==? 7'b1010111 && $instr[14:12] == 3'b111;
          
          //B.Flavours of above types
          //Vector Load
-         $is_vl_type =  $is_vld_type && $instr[27:26] == 2'b00;
-         $is_vls_type = $is_vld_type && ($instr[27:26] == 2'b01 || $instr[27:26]==2'b11);
-         $is_vlx_type = $is_vld_type && $instr[27:26] == 2'b10;
+         $is_vl_instr =  $is_vld_instr && $instr[27:26] == 2'b00;
+         $is_vls_instr = $is_vld_instr && ($instr[27:26] == 2'b01 || $instr[27:26]==2'b11);
+         $is_vlx_instr = $is_vld_instr && $instr[27:26] == 2'b10;
          
          //Vector Store
-         $is_vs_type =  $is_vstr_type && $instr[27:26] == 2'b00;
-         $is_vss_type = $is_vstr_type && ($instr[27:26] == 2'b01 || $instr[27:26]==2'b11);
-         $is_vsx_type = $is_vstr_type && $instr[27:26] == 2'b10;
+         $is_vs_instr =  $is_vstr_instr && $instr[27:26] == 2'b00;
+         $is_vss_instr = $is_vstr_instr && ($instr[27:26] == 2'b01 || $instr[27:26]==2'b11);
+         $is_vsx_instr = $is_vstr_instr && $instr[27:26] == 2'b10;
          
          //Vector Arithmetic
          $is_ivv_instr = $is_var_instr && $instr[14:12] == 3'b000;
@@ -110,8 +152,8 @@
          */
          
          //C. Create valids for other fields depending on instr type
-         $vd_valid = !$is_vcfg_instr && !is_vstr_instr;
-         $rd_valid = $is_vcfg_instr || $is_fv_instr || $is_mvv_instr || $is_mvx_instr;
+         $vd_valid = !$is_vcfg_instr && !$is_vstr_instr;
+         $rd_valid = $is_vcfg_instr || $is_fvv_instr || $is_mvv_instr || $is_mvx_instr;
          
          $vs1_valid = $is_ivv_instr || $is_fvv_instr || $is_mvv_instr;
          $rs1_valid = $is_ivx_instr || $is_fvf_instr || $is_mvx_instr || $is_vamo_instr || $is_vld_instr || $is_vstr_instr || $is_vcfg_instr; //vestvli not supported here; 
@@ -139,7 +181,7 @@
          ?$funct3_valid
             $funct3[2:0] = $instr[14:12];
          ?$funct6_valid
-            $funct7[5:0] = $instr[31:26];
+            $funct6[5:0] = $instr[31:26];
          
          //E. Decode Individual instructions
          // Only a subset of RISCV spec - just what we need
@@ -344,7 +386,7 @@
    //  o data memory
    //  o CPU visualization
    |cpu
-      //m4+imem(@1)    // Args: (read stage) //Instruction mem in @1
+      m4+imem(@1)    // Args: (read stage) //Instruction mem in @1
       
       //m4+rf(@2, @3)  // Args: (read stage, write stage) - if equal, no register bypass is required
       //m4+dmem(@4)    // Args: (read/write stage)
