@@ -1,35 +1,26 @@
-// Modified from - ARA accelerator Github Repository
+// Code your design here
+// 
+// 
+
+// Author: Nitin Mishra
 
 // Description: Functional module of a generic SRAM
 //
 // Parameters:
-// - NumWords:    Number of words in the macro. Address width can be calculated with:
-//                `AddrWidth = (NumWords > 32'd1) ? $clog2(NumWords) : 32'd1`
-//                The module issues a warning if there is a request on an address which is
-//                not in range.
-// - DataWidth:   Width of the ports `wdata_i` and `rdata_o`.
-// - ByteWidth:   Width of a byte, the byte enable signal `be_i` can be calculated with the
-//                ceiling division `ceil(DataWidth, ByteWidth)`.
-// - NumPorts:    Number of read and write ports. Each is a full port. Ports with a higher
-//                index read and write after the ones with lower indices.
-// - Latency:     Read latency, the read data is available this many cycles after a request.
-// - SimInit:     Macro simulation initialization. Values are:
-//                "zeros":  Each bit gets initialized with 1'b0.
-//                "ones":   Each bit gets initialized with 1'b1.
-//                "random": Each bit gets random initialized with 1'b0 or 1'b1.
-//                "none":   Each bit gets initialized with 1'bx. (default)
-// - PrintSimCfg: Prints at the beginning of the simulation a `Hello` message with
-//                the instantiated parameters and signal widths.
-//
+// - NumWords:    	Total number of elements in the memory = No. of VRs x No. of elements per VR
+// - DataWidth:   	Width of the ports `wdata_i` and `rdata_o`.
+//                	ceiling division `ceil(DataWidth, ByteWidth)`.
+// - Numbanks:    	Number of memory banks. The elements of Vector Registers are sprea across these  banks.
+// - WordsPerbank : Total No. of elements stored in each bank. Each bank stores multiple elements from every VR 
 // Ports:
-// - `clk_i`:   Clock
-// - `rst_ni`:  Asynchronous reset, active low
-// - `req_i`:   Request, active high
-// - `we_i`:    Write request, active high
-// - `addr_i`:  Request address
-// - `wdata_i`: Write data, has to be valid on request
-// - `be_i`:    Byte enable, active high
-// - `rdata_o`: Read data, valid `Latency` cycles after a request with `we_i` low.
+// - `clk`:   	Clock
+// - `nrst`:  	Asynchronous reset, active low
+// - `re`:   	Request, active high
+// - `we`:    	Write request, active high
+// - `w_addr`:  Write Request address
+// - `wdata`: 	Write data, has to be valid on request
+// - `r_addr`:  Read Request address
+// - `rdata`: 	Read data, valid on re.
 //
 // Behaviour:
 // - Address collision:  When Ports are making a write access onto the same address,
@@ -38,122 +29,95 @@
 //                       according how the respective `be_i` signal is set.
 // - Read data on write: This implementation will not produce a read data output on the signal
 //                       `rdata_o` when `req_i` and `we_i` are asserted. The output data is stable
-//                       on write requests.
+//                        on write requests.
 
 module tc_sram #(
-  parameter int unsigned NumWords     = 32'd1024, // Number of Words in data array
-  parameter int unsigned DataWidth    = 32'd32,  // Data signal width
-  parameter int unsigned ByteWidth    = 32'd8,    // Width of a data byte
-  parameter int unsigned NumPorts     = 32'd2,    // Number of read and write ports
-  parameter int unsigned Latency      = 32'd1,    // Latency when the read data is available
-  parameter              SimInit      = "none",   // Simulation initialization
-  parameter bit          PrintSimCfg  = 1'b0,     // Print configuration
-  // DEPENDENT PARAMETERS, DO NOT OVERWRITE!
-  parameter int unsigned AddrWidth = (NumWords > 32'd1) ? $clog2(NumWords) : 32'd1,
-  parameter int unsigned BeWidth   = (DataWidth + ByteWidth - 32'd1) / ByteWidth, // ceil_div
-  parameter type         addr_t    = logic [AddrWidth-1:0],
-  parameter type         data_t    = logic [DataWidth-1:0],
-  parameter type         be_t      = logic [BeWidth-1:0]
+  parameter int unsigned NumWords		= 1024, // Total  elements - (VRs * elementperVR)
+  parameter int unsigned NumBanks		= 4,		// banks
+  parameter int unsigned WordsPerBank	= NumWords/NumBanks, // 32
+  parameter int unsigned DataWidth    	= 32,  // Data signal width
+ 
+ // DEPENDENT PARAMETERS, DO NOT OVERWRITE!
+  
+  parameter int unsigned AddrWidth 	= (NumWords > 32'd1) ? $clog2(WordsPerBank) : 32'd1,
+  parameter int unsigned BankSel	= $clog2(NumBanks)
+  //parameter int unsigned BeWidth  = (DataWidth + ByteWidth - 32'd1) / ByteWidth, // ceil_div - no - floor
+  //parameter type         addr_t	    = logic [AddrWidth-1:0],
+  //parameter type         data_t    	= logic [DataWidth-1:0]
+  //parameter type         be_t      	= logic [BeWidth-1:0]
 ) (
-  input  logic                 clk_i,      // Clock
-  input  logic                 rst_ni,     // Asynchronous reset active low
+  input  logic	clk,      // Clock
+  input  logic  nrst,     // Asynchronous reset active low
   // input ports
-  input  logic  [NumPorts-1:0] req_i,      // request
-  input  logic  [NumPorts-1:0] we_i,       // write enable
-  input  addr_t [NumPorts-1:0] addr_i,     // request address
-  input  data_t [NumPorts-1:0] wdata_i,    // write data
-  input  be_t   [NumPorts-1:0] be_i,       // write byte enable
-  // output ports
-  output data_t [NumPorts-1:0] rdata_o     // read data
+  //input  logic  req[BankSel-1:0],      // request
+ // input  logic  we[BankSel-1:0],       // write enable
+ // input  logic  re[BankSel-1:0],
+  input  logic  [NumBanks-1:0]re,   
+  input  logic  [NumBanks-1:0]we,
+  input  logic[NumBanks-1:0][AddrWidth-1:0]w_addr,    // request address
+  input  logic[NumBanks-1:0][AddrWidth-1:0]r_addr,
+  input  logic[NumBanks-1:0][DataWidth-1:0]wdata,    // write data
+ 
+  output logic[NumBanks-1:0][DataWidth-1:0]rdata   // read data
 );
 
   // memory array
-  data_t sram [NumWords-1:0];
+  
+  logic[DataWidth-1:0] sram [WordsPerBank-1:0][NumBanks-1:0]; // 2D sram memory array
+  
   // hold the read address when no read access is made
-  addr_t [NumPorts-1:0] r_addr_q;
+  //addr_t [NumPorts-1:0] r_addr_q;
 
-  // SRAM simulation initialization
-  data_t [NumWords-1:0] init_val;
-  initial begin : proc_sram_init
-    for (int unsigned i = 0; i < NumWords; i++) begin
-      for (int unsigned j = 0; j < DataWidth; j++) begin
-        case (SimInit)
-          "zeros":  init_val[i][j] = 1'b0;
-          "ones":   init_val[i][j] = 1'b1;
-          "random": init_val[i][j] = $urandom();
-          default:  init_val[i][j] = 1'bx;
-        endcase
-      end
-    end
-  end
-
+  
   // set the read output if requested
   // The read data at the highest array index is set combinational.
   // It gets then delayed for a number of cycles until it gets available at the output at
   // array index 0.
 
   // read data output assignment
-  data_t [NumPorts-1:0][Latency-1:0] rdata_q,  rdata_d;
-  if (Latency == 32'd0) begin : gen_no_read_lat
-    for (genvar i = 0; i < NumPorts; i++) begin : gen_port
-      assign rdata_o[i] = (req_i[i] && !we_i[i]) ? sram[addr_i[i]] : sram[r_addr_q[i]];
-    end
-  end else begin : gen_read_lat
+  
 
-    always_comb begin
-      for (int unsigned i = 0; i < NumPorts; i++) begin
-        rdata_o[i] = rdata_q[i][0];
-        for (int unsigned j = 0; j < (Latency-1); j++) begin
-          rdata_d[i][j] = rdata_q[i][j+1];
+  // write memory array with default values on reset
+  always_ff @(posedge clk, negedge nrst) begin
+    if (!nrst) begin
+      for (int i = 0; i < NumBanks; i++) begin
+        for(int j = 0; j < WordsPerBank; j++) begin
+          sram[j][i] <= 32'd0;
         end
-        rdata_d[i][Latency-1] = (req_i[i] && !we_i[i]) ? sram[addr_i[i]] : sram[r_addr_q[i]];
       end
     end
-  end
-
-  // write memory array
-  always_ff @(posedge clk_i or negedge rst_ni) begin
-    if (!rst_ni) begin
-      for (int unsigned i = 0; i < NumWords; i++) begin
-        sram[i] <= init_val[i];
-      end
-      for (int i = 0; i < NumPorts; i++) begin
-        r_addr_q[i] <= {AddrWidth{1'b0}};
-        // initialize the read output register for each port
-        if (Latency != 32'd0) begin
-          for (int unsigned j = 0; j < Latency; j++) begin
-            rdata_q[i][j] <= init_val[{AddrWidth{1'b0}}];
-          end
-        end
-      end
-    end else begin
-      // read value latch happens before new data is written to the sram
-      for (int unsigned i = 0; i < NumPorts; i++) begin
-        if (Latency != 0) begin
-          for (int unsigned j = 0; j < Latency; j++) begin
-            rdata_q[i][j] <= rdata_d[i][j];
-          end
-        end
-      end
-      // there is a request for the SRAM, latch the required register
-      for (int unsigned i = 0; i < NumPorts; i++) begin
-        if (req_i[i]) begin
-          if (we_i[i]) begin
-            // update value when write is set at clock
-            for (int unsigned j = 0; j < DataWidth; j++) begin
-              if (be_i[i][j/ByteWidth]) begin
-                sram[addr_i[i]][j] <= wdata_i[i][j];
-              end
+    
+      else begin
+        // read value latch happens before new data is written to the sram
+        for (int i = 0; i < NumBanks; i++) begin
+          //for(int j = 0; j < WordsPerBank; j++) begin
+            
+            if (!re[i] && we[i]) begin
+              sram[w_addr[i]][i] <= wdata[i];
             end
-          end else begin
-            // otherwise update read address for subsequent non request cycles
-            r_addr_q[i] <= addr_i[i];
-          end
-        end // if req_i
-      end // for ports
-    end // if !rst_ni
+          
+            else if(re[i] && !we[i]) begin
+              rdata[i] <= sram[r_addr[i]][i];
+            end
+           
+            else if(re[i] && we[i]) begin
+              sram[w_addr[i]][i] <= wdata[i];
+              rdata[i] <= sram[r_addr[i]][i];
+            end
+          
+            else begin
+              sram[w_addr[i]][i] <= sram[w_addr[i]][i];
+              rdata[i] <= 32'd0;
+            end
+          //end
+        end
+      end
   end
-
+     
+  
+endmodule
+    
+/*
 // Validate parameters.
 // pragma translate_off
 `ifndef VERILATOR
@@ -195,3 +159,4 @@ module tc_sram #(
 `endif
 // pragma translate_on
 endmodule
+*/
